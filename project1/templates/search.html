@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Search
+{% endblock %}
+
+{% block main %}
+
+<p>Results for "{{query}}"</p> 
+{% for row in rows %}
+    <a href="{{ url_for('book', title=row.title) }}">{{row.title}}</a> <p>by {{row.author}}</p>
+{% endfor %}
+{% for row in titleRows %}
+    <a href="{{ url_for('book', title=row.title)}}">{{row.title}}</a> <p>by {{row.author}}</p>
+{% endfor %}
+
+
+
+{% endblock %}
