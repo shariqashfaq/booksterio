@@ -1,6 +1,6 @@
 import os
 import json
-from flask import Flask, session, render_template, request, redirect 
+from flask import Flask, session, render_template, request, redirect, jsonify
 from flask_session import Session
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
@@ -143,14 +143,28 @@ def search():
 @login_required
 def book(title):
     """ returns a book page when user clicks link on search results page"""
+    #store book title in session for use in review funtion
+    session["book"] = title 
+
+    #get book reviews from database
+    rows = db.execute("SELECT * FROM reviews WHERE reviews.user_id = users.id AND title = :title", {"title" : title}).fetchall()
     
-    #convert title to json so that it can be read by javascript on book page
-    return render_template("book.html", title=json.dumps(title))
+    return render_template("book.html", title=title, rows=rows)
 
 @app.route("/review", methods=["POST"])
 @login_required
 def review():
     """Submits user review for a book taking book title as argument. Returns updated book page with new review via AJAX"""
     #todo: rank reviews by user voting
+
+    #check if user has submitted a review for the same book before
+    row = db.execute("SELECT * FROM reviews, users WHERE user_id = :user_id AND rev_book = :rev_book", {"user_id":session["user_id"], "rev_book":session["book"]}).fetchall()
+    if not row == None:
+        return jsonify({"success": False})
+    
+    #insert review into database
+    db.execute("INSERT INTO reviews (rev_book, user_id, rev_text, rating) VALUES (:rev_book, :user_id, :rev_text, :rating)", {"rev_book":session["book"], "user_id":session["user_id"], "rev_text":request.form.get("review"), "rating":request.form.get("rating")})
+
+    #return timestamp, username, rating, and review text via jsonify
 
 
