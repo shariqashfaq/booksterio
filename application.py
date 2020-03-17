@@ -14,9 +14,17 @@ app = Flask(__name__)
 # Ensure templates are auto-reloaded
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
+# Ensure responses aren't cached
+#@app.after_request
+def after_request(response):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Expires"] = 0
+    response.headers["Pragma"] = "no-cache"
+    return response
+
 # Check for environment variable
-if not os.getenv("DATABASE_URL"):
-    raise RuntimeError("DATABASE_URL is not set")
+#if not os.getenv("DATABASE_URL"):
+    #raise RuntimeError("DATABASE_URL is not set")
 
 # Configure session to use filesystem
 app.config["SESSION_PERMANENT"] = False
@@ -24,7 +32,8 @@ app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
 # Set up database
-engine = create_engine(os.getenv("DATABASE_URL"))
+#engine = create_engine(os.getenv("DATABASE_URL"))
+engine = create_engine('postgres://bobipsnaljcgyj:fc6a57bab3b57ef67dcb1be29a5319c27e7caa61c266074b58d5150b72f24561@ec2-54-197-241-96.compute-1.amazonaws.com:5432/d7p40mq37e3u4r')
 db = scoped_session(sessionmaker(bind=engine))
 
 #todo: implement controls for user input to prevent XSS
@@ -62,6 +71,7 @@ def login():
 
     # Remember which user has logged in
     session["user_id"] = rows.id
+    session["username"] = rows.username
 
     # Redirect user to home page
     return redirect("/")
@@ -93,6 +103,7 @@ def register():
     #store id and login user
     rows0 = db.execute("SELECT * FROM users WHERE username = :username", {"username":request.form.get("username")}).fetchone()
     session["user_id"] = rows0.id
+    
     db.commit()
     return redirect("/")
 
@@ -143,11 +154,15 @@ def search():
 @login_required
 def book(title):
     """ returns a book page when user clicks link on search results page"""
-    #store book title in session for use in review funtion
+    #store book title in session for use in review function
     session["book"] = title 
+    
 
     #get book reviews from database
-    rows = db.execute("SELECT * FROM reviews WHERE reviews.user_id = users.id AND title = :title", {"title" : title}).fetchall()
+    books = db.execute("SELECT * FROM books WHERE title = :title", {"title" : title}).fetchall()
+    session["bookId"] = books[0]["id"]
+
+    rows = db.execute("SELECT * FROM reviews, users WHERE reviews.user_id = users.id AND rev_book = :rev_book", {"rev_book" : books[0]["id"]}).fetchall()
     
     return render_template("book.html", title=title, rows=rows)
 
@@ -158,13 +173,18 @@ def review():
     #todo: rank reviews by user voting
 
     #check if user has submitted a review for the same book before
-    row = db.execute("SELECT * FROM reviews, users WHERE user_id = :user_id AND rev_book = :rev_book", {"user_id":session["user_id"], "rev_book":session["book"]}).fetchall()
-    if not row == None:
+    row = db.execute("SELECT * FROM reviews WHERE user_id = :user_id AND rev_book = :rev_book", {"user_id":session["user_id"], "rev_book":session["bookId"]}).fetchall()
+    if not len(row) == 0:
+        
         return jsonify({"success": False})
     
     #insert review into database
-    db.execute("INSERT INTO reviews (rev_book, user_id, rev_text, rating) VALUES (:rev_book, :user_id, :rev_text, :rating)", {"rev_book":session["book"], "user_id":session["user_id"], "rev_text":request.form.get("review"), "rating":request.form.get("rating")})
-
+    db.execute("INSERT INTO reviews (rev_book, user_id, rev_text, rating) VALUES (:rev_book, :user_id, :rev_text, :rating)", {"rev_book":session["bookId"], "user_id":session["user_id"], "rev_text":request.form.get("review"), "rating":request.form.get("rating")})
+    db.commit()
+    
+    #todo: format review text and parse review text for keywords
+    
     #return timestamp, username, rating, and review text via jsonify
-
+    return jsonify({"success": True, "review":request.form.get("review"), "rating": request.form.get("rating"), "username":session["username"]})
+    
 
